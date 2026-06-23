@@ -1,0 +1,377 @@
+# ================================================================
+# 🔥 ChurnSight | Notebook 3 — ECOMMERCE
+# Innovation: Social Graph Scoring + DiCE Counterfactual
+# Dataset: E comm.xlsx
+# ================================================================
+
+# ── CELL 1: Libraries ────────────────────────────────────────────
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import joblib, os, warnings
+warnings.filterwarnings('ignore')
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing   import LabelEncoder, StandardScaler
+from sklearn.cluster         import KMeans
+from sklearn.metrics         import (classification_report,
+                                      confusion_matrix,
+                                      roc_auc_score, roc_curve,
+                                      accuracy_score)
+from sklearn.tree            import DecisionTreeClassifier
+from sklearn.ensemble        import RandomForestClassifier
+from xgboost                 import XGBClassifier
+from imblearn.over_sampling  import SMOTE
+import shap
+import dice_ml
+import networkx as nx
+
+os.makedirs('../models', exist_ok=True)
+os.makedirs('../data',   exist_ok=True)
+print("✅ Libraries ready!")
+
+# ── CELL 2: Data Load ────────────────────────────────────────────
+df = pd.read_excel('E comm.xlsx')
+print(f"Shape: {df.shape}")
+print(df.head())
+
+# CustomerID hata do
+if 'CustomerID' in df.columns:
+    customer_ids = df['CustomerID'].values
+    df.drop(columns='CustomerID', inplace=True)
+else:
+    customer_ids = np.arange(len(df))
+
+# ── CELL 3: EDA ──────────────────────────────────────────────────
+print("=== Missing Values ===")
+check_missing = df.isnull().sum() * 100 / df.shape[0]
+mv = check_missing[check_missing > 0].sort_values(ascending=False)
+print(mv if len(mv) > 0 else "Koi missing nahi!")
+
+# Categorical vs Churn
+cat_vars = ['PreferredLoginDevice','CityTier',
+            'PreferredPaymentMode','Gender',
+            'PreferedOrderCat','MaritalStatus']
+cat_vars = [c for c in cat_vars if c in df.columns]
+
+if cat_vars:
+    fig, axs = plt.subplots(2, 3, figsize=(16, 12))
+    axs = axs.flatten()
+    for i, var in enumerate(cat_vars):
+        sns.countplot(x=var, hue='Churn', data=df,
+            palette=['#1D9E75','#E05252'], ax=axs[i])
+        axs[i].set_title(f'{var} vs Churn',
+            fontweight='bold')
+        axs[i].tick_params(axis='x', rotation=45)
+    for j in range(len(cat_vars), len(axs)):
+        axs[j].set_visible(False)
+    plt.tight_layout()
+    plt.show()
+
+# Numeric boxplots
+num_vars = ['Tenure','WarehouseToHome','OrderCount',
+            'DaySinceLastOrder','CashbackAmount']
+num_vars = [c for c in num_vars if c in df.columns]
+
+if num_vars:
+    fig, axs = plt.subplots(2, 3, figsize=(16, 10))
+    axs = axs.flatten()
+    for i, var in enumerate(num_vars):
+        sns.boxplot(y=var, x='Churn', data=df,
+            palette=['#1D9E75','#E05252'], ax=axs[i])
+        axs[i].set_title(var, fontweight='bold')
+    for j in range(len(num_vars), len(axs)):
+        axs[j].set_visible(False)
+    plt.tight_layout()
+    plt.show()
+
+# ── CELL 4: Cleaning ─────────────────────────────────────────────
+fill_cols = ['HourSpendOnApp','OrderAmountHikeFromlastYear',
+             'Tenure','WarehouseToHome','DaySinceLastOrder',
+             'OrderCount','CouponUsed','CashbackAmount']
+for col in fill_cols:
+    if col in df.columns:
+        df[col].fillna(df[col].median(), inplace=True)
+
+le = LabelEncoder()
+for col in df.select_dtypes(include='object').columns:
+    if col != 'Churn':
+        df[col] = le.fit_transform(df[col].astype(str))
+
+df['Churn'] = df['Churn'].astype(int)
+print("✅ Data cleaned!")
+
+# Correlation heatmap
+plt.figure(figsize=(16, 12))
+sns.heatmap(df.corr(), fmt='.2g', annot=True,
+    cmap='coolwarm', linewidths=0.5)
+plt.title('Correlation Heatmap — Ecommerce',
+    fontweight='bold')
+plt.tight_layout()
+plt.show()
+
+# ── CELL 5: 🔥 INNOVATION 1 — SOCIAL GRAPH SCORING ──────────────
+print("\n🔥 Innovation 1: Social Graph Influence Scoring")
+
+# Customer referral/purchase network banao
+# Real mein: "also bought", referral codes, shared accounts
+# Yahan: similarity-based graph (same city, same category)
+
+n = len(df)
+print(f"Building graph for {n} customers...")
+
+G = nx.Graph()
+
+# Nodes add karo
+for i in range(n):
+    G.add_node(i,
+        churn=int(df['Churn'].iloc[i]),
+        city=int(df['CityTier'].iloc[i])
+        if 'CityTier' in df.columns else 0
+    )
+
+# Edges — same city + same preferred category = connected
+np.random.seed(42)
+edge_count = 0
+sample_size = min(n, 500)  # speed ke liye sample
+
+for i in range(sample_size):
+    # Har customer ke 2-5 connections
+    n_connections = np.random.randint(2, 6)
+    potential = np.random.choice(
+        [j for j in range(sample_size) if j != i],
+        size=min(n_connections, sample_size-1),
+        replace=False
+    )
+    for j in potential:
+        # Same city = stronger connection
+        same_city = (df['CityTier'].iloc[i] ==
+                     df['CityTier'].iloc[j]
+                     ) if 'CityTier' in df.columns else False
+        if same_city or np.random.random() < 0.3:
+            G.add_edge(i, j)
+            edge_count += 1
+
+print(f"Graph: {G.number_of_nodes()} nodes, "
+      f"{G.number_of_edges()} edges")
+
+# PageRank — influence score
+pagerank = nx.pagerank(G, alpha=0.85)
+df['pagerank_score'] = [pagerank.get(i, 0)
+                         for i in range(n)]
+
+# Churn neighbor ratio — kitne connected churned hain
+def churn_neighbor_ratio(G, node, df):
+    neighbors = list(G.neighbors(node))
+    if not neighbors:
+        return 0.0
+    churn_nb = sum(1 for nb in neighbors
+                   if nb < len(df) and
+                   df['Churn'].iloc[nb] == 1)
+    return churn_nb / len(neighbors)
+
+df['churn_neighbor_ratio'] = [
+    churn_neighbor_ratio(G, i, df) for i in range(n)
+]
+
+# Degree centrality
+degree_cent = nx.degree_centrality(G)
+df['degree_centrality'] = [degree_cent.get(i, 0)
+                             for i in range(n)]
+
+# Graph visualization (sample)
+plt.figure(figsize=(10, 8))
+sample_nodes = list(range(min(50, n)))
+G_sample = G.subgraph(sample_nodes)
+
+node_colors = ['#E05252' if df['Churn'].iloc[nd] == 1
+               else '#1D9E75'
+               for nd in G_sample.nodes()]
+node_sizes  = [pagerank.get(nd, 0.01) * 5000
+               for nd in G_sample.nodes()]
+
+pos = nx.spring_layout(G_sample, seed=42)
+nx.draw_networkx(G_sample, pos=pos,
+    node_color=node_colors,
+    node_size=node_sizes,
+    with_labels=False,
+    edge_color='#cccccc',
+    alpha=0.8)
+
+red_patch   = plt.matplotlib.patches.Patch(
+    color='#E05252', label='Churned')
+green_patch = plt.matplotlib.patches.Patch(
+    color='#1D9E75', label='Retained')
+plt.legend(handles=[red_patch, green_patch],
+    loc='upper right')
+plt.title('Customer Network Graph\n'
+    '(Bada node = zyada influence, '
+    'Red = Churned)', fontweight='bold')
+plt.axis('off')
+plt.tight_layout()
+plt.show()
+
+# Graph feature analysis
+print("\n=== Graph Features vs Churn ===")
+graph_analysis = df.groupby('Churn')[[
+    'pagerank_score',
+    'churn_neighbor_ratio',
+    'degree_centrality'
+]].mean().round(4)
+print(graph_analysis)
+
+print("✅ Social graph features added!")
+graph_feature_cols = ['pagerank_score',
+                      'churn_neighbor_ratio',
+                      'degree_centrality']
+
+# ── CELL 6: Model ─────────────────────────────────────────────────
+feature_cols = ([c for c in df.columns
+                 if c not in ['Churn']] +
+                graph_feature_cols)
+feature_cols = list(set(
+    [c for c in feature_cols if c in df.columns
+     and c != 'Churn']))
+
+X = df[feature_cols].fillna(0)
+y = df['Churn']
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42, stratify=y)
+
+sm = SMOTE(random_state=42)
+X_tr, y_tr = sm.fit_resample(X_train, y_train)
+
+# 3 models — original notebook ki tarah
+# Decision Tree
+dtree = DecisionTreeClassifier(
+    random_state=42, max_depth=8,
+    class_weight='balanced')
+dtree.fit(X_tr, y_tr)
+print(f"DTree: {accuracy_score(y_test, dtree.predict(X_test)):.4f}")
+
+# Random Forest
+rfc = RandomForestClassifier(
+    n_estimators=100, random_state=0,
+    class_weight='balanced')
+rfc.fit(X_tr, y_tr)
+print(f"RF: {accuracy_score(y_test, rfc.predict(X_test)):.4f}")
+
+# XGBoost
+xgb = XGBClassifier(
+    gamma=0, learning_rate=0.1, max_depth=7,
+    n_estimators=200, random_state=42,
+    eval_metric='logloss', use_label_encoder=False)
+xgb.fit(X_tr, y_tr)
+
+y_pred = xgb.predict(X_test)
+y_prob = xgb.predict_proba(X_test)[:,1]
+auc    = roc_auc_score(y_test, y_prob)
+
+print(f"\n🎯 XGBoost AUC: {auc:.4f}")
+print(classification_report(y_test, y_pred,
+    target_names=['Retained','Churned']))
+
+# ROC Curve comparison
+plt.figure(figsize=(8,5))
+for name, mdl in [('DTree',dtree),
+                   ('RF',rfc),('XGB',xgb)]:
+    fpr, tpr, _ = roc_curve(
+        y_test, mdl.predict_proba(X_test)[:,1])
+    a = roc_auc_score(
+        y_test, mdl.predict_proba(X_test)[:,1])
+    plt.plot(fpr, tpr, lw=2,
+        label=f'{name} (AUC={a:.3f})')
+plt.plot([0,1],[0,1],'k--')
+plt.xlabel('FPR'); plt.ylabel('TPR')
+plt.title('ROC Curves — Ecommerce')
+plt.legend()
+plt.show()
+
+# ── CELL 7: SHAP ─────────────────────────────────────────────────
+explainer   = shap.TreeExplainer(xgb)
+shap_values = explainer.shap_values(X_test)
+
+fig, axes = plt.subplots(1, 2, figsize=(16, 5))
+plt.sca(axes[0])
+shap.summary_plot(shap_values, X_test,
+    feature_names=feature_cols, plot_type='bar',
+    show=False)
+axes[0].set_title('Feature Importance (Graph included!)')
+
+plt.sca(axes[1])
+shap.summary_plot(shap_values, X_test,
+    feature_names=feature_cols, show=False)
+axes[1].set_title('SHAP Impact Direction')
+
+plt.tight_layout()
+plt.show()
+
+# ── CELL 8: 🔥 DiCE Counterfactual ──────────────────────────────
+print("\n🔥 Innovation 2: DiCE Counterfactual")
+
+try:
+    cont_feats = [f for f in feature_cols
+                  if df[f].dtype in ['float64','float32','int64']
+                  and df[f].nunique() > 10][:8]
+
+    train_dice = pd.concat([
+        X_train[feature_cols],
+        y_train.rename('Churn')
+    ], axis=1)
+
+    data_dice = dice_ml.Data(
+        dataframe           = train_dice,
+        continuous_features = cont_feats,
+        outcome_name        = 'Churn'
+    )
+    model_dice = dice_ml.Model(model=xgb, backend='sklearn')
+    exp        = dice_ml.Dice(data_dice, model_dice,
+                               method='random')
+
+    high_risk = X_test[xgb.predict(X_test)==1].head(1)
+
+    if len(high_risk) > 0:
+        cf = exp.generate_counterfactuals(
+            high_risk, total_CFs=3,
+            desired_class='opposite')
+        print("=== RETENTION PRESCRIPTIONS (Ecommerce) ===")
+        cf.visualize_as_dataframe(show_only_changes=True)
+
+        cf.cf_examples_list[0].final_cfs_df.to_csv(
+            '../data/counterfactuals_ecom.csv', index=False)
+        print("✅ DiCE done!")
+
+except Exception as e:
+    print(f"DiCE note: {e}")
+
+# ── CELL 9: Save ─────────────────────────────────────────────────
+df['churn_score'] = (xgb.predict_proba(X)[:,1]*100).round(1)
+df['risk'] = pd.cut(df['churn_score'],
+    bins=[-1,40,70,101], labels=['LOW','MEDIUM','HIGH'])
+df['domain'] = 'Ecommerce'
+
+tenure_col = 'Tenure' if 'Tenure' in df.columns else feature_cols[0]
+spend_col  = ('CashbackAmount' if 'CashbackAmount' in df.columns
+              else feature_cols[1])
+freq_col   = ('OrderCount' if 'OrderCount' in df.columns
+              else feature_cols[2])
+
+out = pd.DataFrame({
+    'tenure':            df[tenure_col],
+    'spend':             df[spend_col],
+    'frequency':         df[freq_col],
+    'pagerank_score':    df['pagerank_score'],
+    'churn_neighbor_ratio': df['churn_neighbor_ratio'],
+    'churn_score':       df['churn_score'],
+    'risk':              df['risk'],
+    'domain':            df['domain'],
+    'churn':             df['Churn']
+})
+out.to_csv('../data/clean_ecommerce.csv', index=False)
+joblib.dump(xgb, '../models/model_ecommerce.pkl')
+
+print("✅ Saved → data/clean_ecommerce.csv")
+print(f"Risk: {df['risk'].value_counts().to_dict()}")
+print("\n🎉 Notebook 3 Complete!")

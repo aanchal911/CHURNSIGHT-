@@ -1,0 +1,40 @@
+version: "3.9"
+
+services:
+
+  # ── FastAPI ML Backend ─────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: churnsight-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data        # live-reload CSVs without rebuild
+      - ./models:/app/models    # live-reload models without rebuild
+    environment:
+      - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  # ── React Frontend (Nginx) ─────────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: churnsight-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  default:
+    name: churnsight-net
