@@ -4,7 +4,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://churnsight-v8h3.onrender.com/api/:path*"
+      "destination": "https://churnsight-project.onrender.com/api/:path*"
     },
     {
       "source": "/(.*)",
