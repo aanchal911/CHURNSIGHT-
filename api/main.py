@@ -15,17 +15,20 @@ import os
 
 app = FastAPI(title="ChurnSight API", version="1.0.0")
 
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # ── Paths ─────────────────────────────────────────────────────────
-BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_DIR   = os.path.join(BASE, "data")
-MODELS_DIR = os.path.join(BASE, "models")
+# Support both local (repo root) and Render (rootDir=api) layouts
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_ROOT = os.path.dirname(_HERE)
+DATA_DIR   = os.path.join(_ROOT, "data")   if os.path.isdir(os.path.join(_ROOT, "data"))   else os.path.join(_HERE, "data")
+MODELS_DIR = os.path.join(_ROOT, "models") if os.path.isdir(os.path.join(_ROOT, "models")) else os.path.join(_HERE, "models")
 
 DOMAINS = ["telecom", "food", "ecommerce", "ott"]
 
