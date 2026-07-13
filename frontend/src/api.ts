@@ -23,7 +23,7 @@ async function post<T>(path: string, body: object): Promise<T> {
 
 // ── Endpoints ─────────────────────────────────────────────────────
 
-export function fetchCustomers(domain: Domain, limit = 120): Promise<Customer[]> {
+export function fetchCustomers(domain: Domain, limit = 10000): Promise<Customer[]> {
   return get(`/customers/${domain.toLowerCase()}?limit=${limit}`);
 }
 

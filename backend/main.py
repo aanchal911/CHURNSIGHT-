@@ -178,7 +178,7 @@ def health():
 
 
 @app.get("/api/customers/{domain}")
-def get_customers(domain: str, limit: int = 120):
+def get_customers(domain: str, limit: int = 10000):
     domain = domain.lower()
     if domain not in dataframes:
         raise HTTPException(404, f"Domain '{domain}' not found")
