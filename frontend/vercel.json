@@ -5,7 +5,7 @@
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "https://churnsight-project.onrender.com/api/$1"
+      "dest": "https://churnsight-v8h3.onrender.com/api/$1"
     },
     {
       "src": "/(.*)",
