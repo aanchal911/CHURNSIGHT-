@@ -35,7 +35,10 @@ models: dict = {}
 for domain in DOMAINS:
     path = os.path.join(MODELS_DIR, f"model_{domain}.pkl")
     if os.path.exists(path):
-        models[domain] = joblib.load(path)
+        try:
+            models[domain] = joblib.load(path)
+        except Exception as e:
+            print(f"[WARN] Could not load model for {domain}: {e}")
 
 # ── Load CSVs once at startup ─────────────────────────────────────
 dataframes: dict = {}
