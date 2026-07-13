@@ -91,7 +91,7 @@ def fallback_score(f: dict) -> float:
     )
     return round(min(100, max(0, score)), 1)
 
-def df_to_customers(df: pd.DataFrame, domain: str, limit: int = 120) -> list:
+def df_to_customers(df: pd.DataFrame, domain: str, limit: int = 10000) -> list:
     """Convert a cleaned CSV dataframe into customer dicts for the frontend."""
     rows = []
     # normalise column names to lowercase
