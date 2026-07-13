@@ -24,11 +24,9 @@ app.add_middleware(
 )
 
 # ── Paths ─────────────────────────────────────────────────────────
-# Support both local (repo root) and Render (rootDir=api) layouts
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_ROOT = os.path.dirname(_HERE)
-DATA_DIR   = os.path.join(_ROOT, "data")   if os.path.isdir(os.path.join(_ROOT, "data"))   else os.path.join(_HERE, "data")
-MODELS_DIR = os.path.join(_ROOT, "models") if os.path.isdir(os.path.join(_ROOT, "models")) else os.path.join(_HERE, "models")
+DATA_DIR   = os.path.join(_HERE, "data")
+MODELS_DIR = os.path.join(_HERE, "models")
 
 DOMAINS = ["telecom", "food", "ecommerce", "ott"]
 
