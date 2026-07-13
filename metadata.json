@@ -1,6 +1,0 @@
-{
-  "name": "ChurnSight",
-  "description": "Multi-Domain Churn Intelligence Dashboard providing churn predictions, customer analysis, and trend insights.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}

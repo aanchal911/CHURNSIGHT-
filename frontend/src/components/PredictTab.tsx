@@ -459,6 +459,7 @@ export default function PredictTab({ activeDomain }: PredictTabProps) {
               </table>
             </div>
           </div>
+          </div>
         )}
 
     </div>

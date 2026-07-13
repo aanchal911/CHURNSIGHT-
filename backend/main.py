@@ -83,11 +83,11 @@ def fallback_score(f: dict) -> float:
     micro        = float(f.get("micro_risk_score", 0.3))
     days_inact   = float(f.get("days_inactive", 5))
     score = (
-        (1 - tenure / 72) * 30 +
-        (1 - min(spend, 10000) / 10000) * 20 +
-        (1 - frequency / 50) * 20 +
-        (-sent_slope + 1) * 15 +
-        micro * 15
+        (1 - min(tenure, 60) / 60) * 35 +
+        (1 - min(frequency, 30) / 30) * 25 +
+        (1 - min(spend, 3000) / 3000) * 20 +
+        (days_inact / 30) * 10 +
+        micro * 10
     )
     return round(min(100, max(0, score)), 1)
 

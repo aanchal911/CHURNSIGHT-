@@ -1,8 +1,23 @@
+# Dependencies
 node_modules/
-build/
+frontend/node_modules/
+
+# Build outputs
 dist/
-coverage/
-.DS_Store
-*.log
+build/
+frontend/dist/
+
+# Env files
 .env*
 !.env.example
+!frontend/.env.example
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Misc
+.DS_Store
+*.log
+coverage/

@@ -1,3 +1,0 @@
-AUC=0.9392
-rows=7043
-feats=['tenure', 'spend', 'frequency', 'days_inactive', 'sent_slope', 'sent_avg', 'micro_risk_score', 'pagerank_score', 'churn_neighbor_ratio', 'degree_centrality', 'Phone Service_enc', 'Multiple Lines_enc', 'Online Security_enc', 'Tech Support_enc', 'Streaming TV_enc', 'Senior Citizen']
