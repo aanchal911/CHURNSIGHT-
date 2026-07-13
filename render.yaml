@@ -8,4 +8,4 @@ services:
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: ALLOWED_ORIGINS
-        value: https://churnsight.vercel.app
+        value: https://churnsight-a3bc-m1ncmzogc-aanchals-projects-aaffb0a8.vercel.app
