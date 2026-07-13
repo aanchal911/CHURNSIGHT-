@@ -1,14 +1,15 @@
 {
   "buildCommand": "npm install && npm run build",
   "outputDirectory": "dist",
-  "rewrites": [
+  "framework": "vite",
+  "routes": [
     {
-      "source": "/api/:path*",
-      "destination": "https://churnsight-project.onrender.com/api/:path*"
+      "src": "/api/(.*)",
+      "dest": "https://churnsight-project.onrender.com/api/$1"
     },
     {
-      "source": "/(.*)",
-      "destination": "/index.html"
+      "src": "/(.*)",
+      "dest": "/index.html"
     }
   ]
 }
